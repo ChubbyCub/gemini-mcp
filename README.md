@@ -4,10 +4,10 @@ An MCP (Model Context Protocol) server that sends images and PDFs to Google Gemi
 
 ## How it works
 
-The container runs persistently in Docker Desktop with no volume mounts needed. Claude reads files directly from its workspace, base64-encodes them, and sends the content to the container over the MCP protocol. The container forwards them to the Gemini API and returns markdown.
+The container runs on demand via a wrapper script. Claude reads files directly from its workspace, base64-encodes them, and sends the content to the container over the MCP protocol. The container forwards them to the Gemini API and returns markdown.
 
 ```
-Claude Code (host)                 Docker Desktop
+Claude / Claude Cowork (host)      Docker Desktop
   reads src/invoice.pdf
   → base64 encodes it       →      gemini-mcp container
                                      → Gemini API
@@ -30,7 +30,7 @@ Supported MIME types: `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `app
 
 ### 1. Get a Gemini API key
 
-Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and create an API key.
+Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and create an API key. A paid plan is required — the free tier quota is too low for regular use.
 
 ### 2. Build the Docker image
 
@@ -39,33 +39,46 @@ cd gemini-mcp
 docker build -t gemini-mcp .
 ```
 
-### 3. Add to Claude Code MCP settings
+### 3. Create the wrapper script
 
-In your Claude Code settings (`.claude/settings.json`):
+The wrapper kills any lingering `gemini-mcp` containers before starting a fresh one, preventing container buildup when the Claude app closes uncleanly.
+
+```bash
+mkdir -p ~/bin
+cat > ~/bin/gemini-mcp-run << 'EOF'
+#!/usr/bin/env bash
+DOCKER=/Applications/Docker.app/Contents/Resources/bin/docker
+
+$DOCKER ps -q --filter ancestor=gemini-mcp:latest | xargs -r $DOCKER stop > /dev/null 2>&1
+
+exec $DOCKER run --rm -i "$@" gemini-mcp:latest
+EOF
+chmod +x ~/bin/gemini-mcp-run
+```
+
+### 4. Configure Claude Desktop
+
+In `~/Library/Application Support/Claude/claude_desktop_config.json`, add to `mcpServers`:
 
 ```json
 {
   "mcpServers": {
     "gemini-ocr": {
-      "command": "docker",
+      "command": "/Users/YOUR_USERNAME/bin/gemini-mcp-run",
       "args": [
-        "run", "--rm", "-i",
-        "-e", "GEMINI_API_KEY",
-        "-e", "GEMINI_MODEL",
-        "gemini-mcp:latest"
-      ],
-      "env": {
-        "GEMINI_API_KEY": "your_api_key_here",
-        "GEMINI_MODEL": "gemini-2.0-flash"
-      }
+        "-e", "GEMINI_API_KEY=your_api_key_here",
+        "-e", "GEMINI_MODEL=gemini-2.0-flash"
+      ]
     }
   }
 }
 ```
 
-No volume mounts required.
+Pass the API key directly in `args` — the `env` block is not reliably forwarded into the Docker container.
 
-### 4. Use in Claude
+Restart the Claude app after saving.
+
+### 5. Use in Claude
 
 ```
 OCR the file src/invoice.pdf and show me the result
@@ -80,8 +93,18 @@ Claude will read each file from the workspace, send it to the gemini-ocr tool, a
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `GEMINI_API_KEY` | Yes | — | Google Gemini API key |
-| `GEMINI_MODEL` | No | `gemini-2.0-flash` | Model to use (`gemini-1.5-pro`, `gemini-2.0-flash`, etc.) |
+| `GEMINI_API_KEY` | Yes | — | Google Gemini API key (paid plan required) |
+| `GEMINI_MODEL` | No | `gemini-2.0-flash` | Model to use (`gemini-2.0-flash`, `gemini-2.5-pro`, etc.) |
+
+## Container cleanup
+
+The wrapper script (`gemini-mcp-run`) stops any running `gemini-mcp` containers each time it's invoked. Each container also uses `--rm` so it is removed automatically on clean exit. This prevents stale containers from accumulating if the Claude app is force-quit.
+
+To manually clean up any lingering containers:
+
+```bash
+docker ps -q --filter ancestor=gemini-mcp:latest | xargs docker stop
+```
 
 ## Local Development (without Docker)
 
