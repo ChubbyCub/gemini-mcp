@@ -1,3 +1,5 @@
+import base64
+import io
 import os
 
 from google import genai
@@ -13,6 +15,15 @@ SUPPORTED_MIME_TYPES = {
     "image/webp",
     "application/pdf",
 }
+
+# Gemini inline_data limit is 20 MB of raw bytes
+_INLINE_SIZE_LIMIT = 20 * 1024 * 1024
+
+_SYSTEM_INSTRUCTION = (
+    "Extract text from documents into markdown. "
+    "Preserve structure (headings, lists, tables). "
+    "Return only the extracted content, no commentary."
+)
 
 mcp = FastMCP("gemini-ocr")
 
@@ -44,18 +55,21 @@ async def ocr_to_markdown(base64_data: str, mime_type: str) -> str:
         )
 
     client = _build_client()
+    raw_bytes = base64.b64decode(base64_data)
+
+    if len(raw_bytes) > _INLINE_SIZE_LIMIT:
+        uploaded = client.files.upload(
+            file=io.BytesIO(raw_bytes),
+            config={"mime_type": mime_type},
+        )
+        part = {"file_data": {"mime_type": mime_type, "file_uri": uploaded.uri}}
+    else:
+        part = {"inline_data": {"mime_type": mime_type, "data": base64_data}}
 
     response = client.models.generate_content(
         model=GEMINI_MODEL,
-        config={
-            "system_instruction": "Extract text from documents into markdown. Preserve structure (headings, lists, tables). Return only the extracted content, no commentary.",
-        },
-        contents=[{
-            "role": "user",
-            "parts": [
-                {"inline_data": {"mime_type": mime_type, "data": base64_data}},
-            ],
-        }],
+        config={"system_instruction": _SYSTEM_INSTRUCTION},
+        contents=[{"role": "user", "parts": [part]}],
     )
 
     return response.text
