@@ -1,0 +1,9 @@
+services:
+  gemini-mcp:
+    build: .
+    image: gemini-mcp:latest
+    stdin_open: true   # required for MCP stdio transport
+    tty: false
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}

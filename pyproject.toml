@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gemini-mcp"
+version = "0.1.0"
+description = "MCP server for Gemini OCR — extracts text from images and PDFs as markdown"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "google-genai>=1.0.0",
+]
+
+[project.scripts]
+gemini-mcp = "server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
