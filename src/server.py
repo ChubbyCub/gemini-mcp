@@ -16,13 +16,19 @@ SUPPORTED_MIME_TYPES = {
     "application/pdf",
 }
 
-# Gemini inline_data limit is 20 MB of raw bytes
-_INLINE_SIZE_LIMIT = 20 * 1024 * 1024
+# Use File API for files 5 MB and above to stay well within inline request limits
+_INLINE_SIZE_LIMIT = 5 * 1024 * 1024
 
 _SYSTEM_INSTRUCTION = (
-    "Extract text from documents into markdown. "
-    "Preserve structure (headings, lists, tables). "
-    "Return only the extracted content, no commentary."
+    "You are an expert document digitizer. "
+    "Extract all text from the provided image or PDF with high fidelity. "
+    "Rules:\n"
+    "- Preserve document structure: use markdown headings, lists, and tables to match the original layout.\n"
+    "- Reproduce tables exactly, including all rows, columns, and numeric values.\n"
+    "- Keep section order and hierarchy as it appears in the document.\n"
+    "- Do not summarize, interpret, or add commentary — output only the extracted content.\n"
+    "- If a section is handwritten or unclear, transcribe your best reading and append [uncertain] inline.\n"
+    "- Output only the markdown. No preamble, no closing remarks."
 )
 
 mcp = FastMCP("gemini-ocr")
@@ -36,10 +42,27 @@ def _build_client() -> genai.Client:
 
 @mcp.tool()
 async def ocr_to_markdown(base64_data: str, mime_type: str) -> str:
-    """Extract all text from an image or PDF and return it as well-formatted markdown.
+    """Extract all text from an image or PDF using Gemini and return it as markdown.
 
-    Claude should read the file from the workspace, base64-encode its contents,
-    and pass them here along with the correct MIME type.
+    ## File size
+    - Under 5 MB: sent as inline base64 data.
+    - 5 MB or larger: automatically uploaded to the Gemini File API. No change
+      needed on the caller side, but large uploads may take a moment.
+
+    ## When to use
+    Use this tool whenever the user wants to read, extract, search, or process
+    text from a scanned document, image, or PDF — including invoices, reports,
+    forms, lab results, or any file where text is embedded in an image.
+
+    ## How to call
+    1. Read the file from disk (binary).
+    2. Base64-encode the raw bytes.
+    3. Pass the encoded string and the correct MIME type here.
+
+    ## After receiving the result
+    - Present the extracted markdown directly to the user.
+    - For batches, call this tool once per file then combine or summarize.
+    - If the user asks to save output, write it to a .md file alongside the original.
 
     Args:
         base64_data: Base64-encoded contents of the image or PDF file.

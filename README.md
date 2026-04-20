@@ -20,9 +20,11 @@ To OCR a whole folder, Claude lists the files in `src/`, then calls `ocr_to_mark
 
 **`ocr_to_markdown(base64_data, mime_type)`**
 
-Claude reads any image or PDF from the workspace, encodes it, and passes it here. Returns extracted text as markdown.
+Claude reads any image or PDF from the workspace, base64-encodes it, and passes it here. Returns extracted text as markdown.
 
 Supported MIME types: `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `application/pdf`
+
+**File size:** Files under 5 MB are sent as inline base64. Files 5 MB and larger are automatically uploaded via the Gemini File API — no special handling needed from the caller's side.
 
 ## Quick Start
 
