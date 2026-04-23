@@ -145,6 +145,7 @@ async def ocr_to_markdown(file_path: str, maintain_format: bool = False) -> str:
 
     Returns the full extracted text as a markdown string, pages in order.
     """
+    file_path = os.path.expanduser(file_path)
     client = _build_client()
 
     with tempfile.TemporaryDirectory() as temp_dir:
